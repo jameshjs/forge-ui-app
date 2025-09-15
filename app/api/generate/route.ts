@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import Replicate from "replicate"
 
 type GenerateRequest = {
   prompt: string
@@ -15,75 +16,89 @@ export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as GenerateRequest
 
-    const baseUrlRaw = process.env.A1111_BASE_URL || "http://127.0.0.1:7860"
-    const baseUrl = normalizeBaseUrl(baseUrlRaw)
+    const apiToken = process.env.REPLICATE_API_TOKEN
+    if (!apiToken) {
+      return NextResponse.json(
+        { error: "Missing REPLICATE_API_TOKEN env var" },
+        { status: 500 },
+      )
+    }
 
     const prompt = body.prompt?.trim() || ""
     if (!prompt) {
       return NextResponse.json({ error: "Missing prompt" }, { status: 400 })
     }
 
-    const width = Number(body.width) || 512
-    const height = Number(body.height) || 512
-    const cfg_scale = Number(body.cfgScale ?? 7)
+    const replicate = new Replicate({
+      auth: apiToken,
+    })
+
+    const count = Math.max(1, Math.min(4, Number(body.count ?? 1))) // Replicate supports up to 4 images
+    const width = Number(body.width) || 1024
+    const height = Number(body.height) || 1024
     const steps = Number(body.steps ?? 20)
-    const n_iter = Math.max(1, Math.min(10, Number(body.count ?? 1)))
-    const negative_prompt = body.negativePrompt ?? ""
-    const sampler_name = body.samplerName || "DPM++ 2M Karras"
+    const cfgScale = Number(body.cfgScale ?? 7.5)
 
-    const payload = {
-      prompt,
-      negative_prompt,
-      width,
-      height,
-      cfg_scale,
-      steps,
-      n_iter,
-      batch_size: 1,
-      sampler_name,
-      // You can tune additional fields here as needed
+    // Build enhanced prompt with negative prompt if provided
+    let enhancedPrompt = prompt
+    if (body.negativePrompt?.trim()) {
+      enhancedPrompt = `${prompt}, avoid: ${body.negativePrompt}`
     }
 
-    const headers: Record<string, string> = { "Content-Type": "application/json" }
-    // Optional auth for A1111 when started with --api-auth or protected upstream
-    const basicAuth = process.env.A1111_BASIC_AUTH ||
-      (process.env.A1111_USERNAME && process.env.A1111_PASSWORD
-        ? `${process.env.A1111_USERNAME}:${process.env.A1111_PASSWORD}`
-        : undefined)
-    const bearer = process.env.A1111_BEARER_TOKEN
-    if (basicAuth) {
-      const encoded = Buffer.from(basicAuth, "utf8").toString("base64")
-      headers["Authorization"] = `Basic ${encoded}`
-    } else if (bearer) {
-      headers["Authorization"] = `Bearer ${bearer}`
-    }
+    // Add style and quality modifiers
+    enhancedPrompt += ", high quality, detailed, professional artwork"
 
-    const targetUrl = `${baseUrl}/sdapi/v1/txt2img`
-    let res: Response
-    try {
-      res = await fetch(targetUrl, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(payload),
-      })
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      return NextResponse.json(
-        { error: "A1111 fetch failed", message, url: targetUrl, baseUrl },
-        { status: 502 },
-      )
-    }
+    const images: string[] = []
 
-    if (!res.ok) {
-      const text = await res.text()
-      return NextResponse.json(
-        { error: `A1111 error: ${res.status} ${res.statusText}`, url: targetUrl, details: text },
-        { status: 502 },
-      )
-    }
+    // Generate multiple images if requested
+    for (let i = 0; i < count; i++) {
+      try {
+        const output = await replicate.run(
+          "black-forest-labs/flux-dev",
+          {
+            input: {
+              prompt: enhancedPrompt,
+              width: Math.min(width, 1024),
+              height: Math.min(height, 1024),
+              num_inference_steps: Math.min(steps, 50),
+              guidance_scale: cfgScale,
+              output_format: "webp",
+            }
+          }
+        ) as string[]
 
-    const data = (await res.json()) as { images?: string[] }
-    const images = (data.images || []).map((b64) => `data:image/png;base64,${b64}`)
+        if (output && output.length > 0) {
+          // Convert Replicate URLs to base64 data URLs
+          for (const imageUrl of output) {
+            try {
+              const imageResponse = await fetch(imageUrl)
+              if (imageResponse.ok) {
+                const imageBuffer = await imageResponse.arrayBuffer()
+                const base64 = Buffer.from(imageBuffer).toString('base64')
+                images.push(`data:image/png;base64,${base64}`)
+              } else {
+                // If we can't fetch the image, use the URL directly
+                images.push(imageUrl)
+              }
+            } catch (fetchErr) {
+              // If we can't convert to base64, use the URL directly
+              images.push(imageUrl)
+            }
+          }
+        } else {
+          return NextResponse.json(
+            { error: "No image generated by Replicate" },
+            { status: 502 },
+          )
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        return NextResponse.json(
+          { error: "Replicate generation failed", message },
+          { status: 502 },
+        )
+      }
+    }
 
     return NextResponse.json({ images })
   } catch (err) {
@@ -93,15 +108,6 @@ export async function POST(request: NextRequest) {
       { status: 500 },
     )
   }
-}
-
-function normalizeBaseUrl(raw: string): string {
-  let url = raw.trim()
-  // Remove trailing slashes
-  url = url.replace(/\/+$/g, "")
-  // Remove accidental sdapi path if user included it
-  url = url.replace(/\/?sdapi.*/i, "")
-  return url
 }
 
 

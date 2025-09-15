@@ -14,10 +14,6 @@ export function AiImageGenerator() {
   const [generateAllFunctions, setGenerateAllFunctions] = useState<((overrideCount?: number) => void)[]>([])
   const [globalStyle, setGlobalStyle] = useState("")
   const [globalVariantCount, setGlobalVariantCount] = useState("1")
-  const [globalLoraModel, setGlobalLoraModel] = useState("none")
-  const [globalCfgScale, setGlobalCfgScale] = useState([7])
-  const [loadingLoras, setLoadingLoras] = useState(false)
-  const [availableLoras, setAvailableLoras] = useState<{ name: string; alias?: string }[]>([])
   const [expanded, setExpanded] = useState<null | {
     background: string
     frame: string
@@ -25,6 +21,17 @@ export function AiImageGenerator() {
     wild_icons: string[]
   }>(null)
   const [finalsByTitle, setFinalsByTitle] = useState<Record<string, { imageUrl: string; width: number; height: number }>>({})
+  
+  // Flux API parameters
+  const [goFast, setGoFast] = useState(true)
+  const [guidance, setGuidance] = useState([3.5])
+  const [megapixels, setMegapixels] = useState([1.0])
+  const [numOutputs, setNumOutputs] = useState("1")
+  const [aspectRatio, setAspectRatio] = useState("1:1")
+  const [outputFormat, setOutputFormat] = useState("webp")
+  const [outputQuality, setOutputQuality] = useState([90])
+  const [promptStrength, setPromptStrength] = useState([0.8])
+  const [numInferenceSteps, setNumInferenceSteps] = useState([20])
 
   // Using a ref or a more robust state management for registered functions
   // to avoid issues with stale closures if components re-render frequently.
@@ -78,26 +85,6 @@ export function AiImageGenerator() {
     }
   }
 
-  // Load available LoRA models from A1111
-  useEffect(() => {
-    let isMounted = true
-    ;(async () => {
-      try {
-        setLoadingLoras(true)
-        const res = await fetch("/api/a1111/loras")
-        if (!res.ok) return
-        const data = (await res.json()) as { ok?: boolean; loras?: { name: string; alias?: string }[] }
-        if (isMounted && data?.loras) setAvailableLoras(data.loras)
-      } catch {
-        // ignore, keep default "None"
-      } finally {
-        if (isMounted) setLoadingLoras(false)
-      }
-    })()
-    return () => {
-      isMounted = false
-    }
-  }, [])
 
   const handleSetFinal = useCallback((args: { title: string; imageUrl: string; width: number; height: number }) => {
     setFinalsByTitle((prev) => ({ ...prev, [args.title]: { imageUrl: args.imageUrl, width: args.width, height: args.height } }))
@@ -150,34 +137,98 @@ export function AiImageGenerator() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          <div className="grid gap-2">
-            <Label htmlFor="global-lora">LoRA Model</Label>
-            <Select value={globalLoraModel} onValueChange={setGlobalLoraModel}>
-              <SelectTrigger id="global-lora">
-                <SelectValue placeholder="Select LoRA model" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">None</SelectItem>
-                {loadingLoras && (
-                  <SelectItem value="__loading" disabled>
-                    Loading...
-                  </SelectItem>
-                )}
-                {!loadingLoras &&
-                  availableLoras.map((l) => (
-                    <SelectItem key={l.name} value={l.name}>
-                      {l.alias ? `${l.alias} (${l.name})` : l.name}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="global-cfg">CFG Scale: {globalCfgScale[0]}</Label>
-            <Slider id="global-cfg" min={1} max={20} step={1} value={globalCfgScale} onValueChange={setGlobalCfgScale} />
+
+        {/* Flux Generation Parameters */}
+        <div className="mb-6">
+          <h3 className="text-lg font-semibold mb-4">Flux Generation Parameters</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid gap-2">
+              <Label htmlFor="go-fast">Go Fast</Label>
+              <Select value={goFast ? "true" : "false"} onValueChange={(value) => setGoFast(value === "true")}>
+                <SelectTrigger id="go-fast">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="true">Fast</SelectItem>
+                  <SelectItem value="false">Slow</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="grid gap-2">
+              <Label htmlFor="guidance">Guidance: {guidance[0]}</Label>
+              <Slider id="guidance" min={1} max={20} step={0.1} value={guidance} onValueChange={setGuidance} />
+            </div>
+            
+            <div className="grid gap-2">
+              <Label htmlFor="megapixels">Megapixels: {megapixels[0]}</Label>
+              <Slider id="megapixels" min={0.5} max={4.0} step={0.1} value={megapixels} onValueChange={setMegapixels} />
+            </div>
+            
+            <div className="grid gap-2">
+              <Label htmlFor="num-outputs">Number of Outputs</Label>
+              <Select value={numOutputs} onValueChange={setNumOutputs}>
+                <SelectTrigger id="num-outputs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">1</SelectItem>
+                  <SelectItem value="2">2</SelectItem>
+                  <SelectItem value="3">3</SelectItem>
+                  <SelectItem value="4">4</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="grid gap-2">
+              <Label htmlFor="aspect-ratio">Aspect Ratio</Label>
+              <Select value={aspectRatio} onValueChange={setAspectRatio}>
+                <SelectTrigger id="aspect-ratio">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1:1">1:1 (Square)</SelectItem>
+                  <SelectItem value="16:9">16:9 (Widescreen)</SelectItem>
+                  <SelectItem value="9:16">9:16 (Portrait)</SelectItem>
+                  <SelectItem value="4:3">4:3 (Standard)</SelectItem>
+                  <SelectItem value="3:4">3:4 (Portrait)</SelectItem>
+                  <SelectItem value="2:3">2:3 (Portrait)</SelectItem>
+                  <SelectItem value="3:2">3:2 (Landscape)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="grid gap-2">
+              <Label htmlFor="output-format">Output Format</Label>
+              <Select value={outputFormat} onValueChange={setOutputFormat}>
+                <SelectTrigger id="output-format">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="webp">WebP</SelectItem>
+                  <SelectItem value="png">PNG</SelectItem>
+                  <SelectItem value="jpg">JPG</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="grid gap-2">
+              <Label htmlFor="output-quality">Output Quality: {outputQuality[0]}</Label>
+              <Slider id="output-quality" min={1} max={100} step={1} value={outputQuality} onValueChange={setOutputQuality} />
+            </div>
+            
+            <div className="grid gap-2">
+              <Label htmlFor="prompt-strength">Prompt Strength: {promptStrength[0]}</Label>
+              <Slider id="prompt-strength" min={0.1} max={1.0} step={0.1} value={promptStrength} onValueChange={setPromptStrength} />
+            </div>
+            
+            <div className="grid gap-2">
+              <Label htmlFor="num-inference-steps">Inference Steps: {numInferenceSteps[0]}</Label>
+              <Slider id="num-inference-steps" min={1} max={50} step={1} value={numInferenceSteps} onValueChange={setNumInferenceSteps} />
+            </div>
           </div>
         </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <Button onClick={handleExpandPrompts} className="w-full">Generate Section Prompts (Gemini)</Button>
           <Button onClick={handleGenerateAll} className="w-full">Generate All Assets ({globalVariantCount} Variants Each)</Button>
@@ -192,11 +243,19 @@ export function AiImageGenerator() {
           globalPrompt={globalPrompt}
           globalStyle={globalStyle}
           globalVariantCount={Number.parseInt(globalVariantCount || "1")}
-          globalLoraModel={globalLoraModel}
-          globalCfgScale={globalCfgScale[0]}
           injectedPrompt={expanded?.background}
           onRegisterGenerate={registerGenerateFunction}
           onSetFinal={handleSetFinal}
+          // Flux parameters
+          goFast={goFast}
+          guidance={guidance[0]}
+          megapixels={megapixels[0]}
+          numOutputs={Number.parseInt(numOutputs)}
+          aspectRatio={aspectRatio}
+          outputFormat={outputFormat}
+          outputQuality={outputQuality[0]}
+          promptStrength={promptStrength[0]}
+          numInferenceSteps={numInferenceSteps[0]}
         />
 
         {/* UI Frame */}
@@ -207,11 +266,19 @@ export function AiImageGenerator() {
           globalPrompt={globalPrompt}
           globalStyle={globalStyle}
           globalVariantCount={Number.parseInt(globalVariantCount || "1")}
-          globalLoraModel={globalLoraModel}
-          globalCfgScale={globalCfgScale[0]}
           injectedPrompt={expanded?.frame}
           onRegisterGenerate={registerGenerateFunction}
           onSetFinal={handleSetFinal}
+          // Flux parameters
+          goFast={goFast}
+          guidance={guidance[0]}
+          megapixels={megapixels[0]}
+          numOutputs={Number.parseInt(numOutputs)}
+          aspectRatio={aspectRatio}
+          outputFormat={outputFormat}
+          outputQuality={outputQuality[0]}
+          promptStrength={promptStrength[0]}
+          numInferenceSteps={numInferenceSteps[0]}
         />
 
         {/* 20 Symbol Icons */}
@@ -224,13 +291,21 @@ export function AiImageGenerator() {
             globalPrompt={globalPrompt}
             globalStyle={globalStyle}
             globalVariantCount={Number.parseInt(globalVariantCount || "1")}
-            globalLoraModel={globalLoraModel}
-            globalCfgScale={globalCfgScale[0]}
             injectedPrompt={expanded?.symbol_icons?.[i]}
             onRegisterGenerate={registerGenerateFunction}
             onSetFinal={handleSetFinal}
-            cohesionHint={`Single, centered subject with a clear silhouette; minimal or flat background; match Background and UI Frame palette and lighting; specify material and surface (polished metal, carved wood, faceted gem), fine engraving, soft ambient occlusion, subtle rim light, balanced saturation, clean negative space, icon-ready, no text.`}
+            cohesionHint={`A simple, clear symbol icon representing {object/idea: e.g., sword, star, coin, potion}, in {art style}, bold silhouette, {color palette}, designed for small-scale visibility, transparent background, crisp edges, minimal design, designed to blend seamlessly with the game interface without standing out too much.`}
             minWords={25}
+            // Flux parameters
+            goFast={goFast}
+            guidance={guidance[0]}
+            megapixels={megapixels[0]}
+            numOutputs={Number.parseInt(numOutputs)}
+            aspectRatio={aspectRatio}
+            outputFormat={outputFormat}
+            outputQuality={outputQuality[0]}
+            promptStrength={promptStrength[0]}
+            numInferenceSteps={numInferenceSteps[0]}
           />
         ))}
 
@@ -244,13 +319,21 @@ export function AiImageGenerator() {
             globalPrompt={globalPrompt}
             globalStyle={globalStyle}
             globalVariantCount={Number.parseInt(globalVariantCount || "1")}
-            globalLoraModel={globalLoraModel}
-            globalCfgScale={globalCfgScale[0]}
             injectedPrompt={expanded?.wild_icons?.[i]}
             onRegisterGenerate={registerGenerateFunction}
             onSetFinal={handleSetFinal}
-            cohesionHint={`Single, centered subject with dynamic energy or aura; glowing effects and magical particles; match Background and UI Frame palette and lighting; specify material and surface qualities, motion streaks, high-contrast rim light, minimal backdrop, clean negative space, icon-ready, no text.`}
+            cohesionHint={`A glowing, attention-grabbing wild icon symbolizing {wild feature: e.g., phoenix, crown, magic crystal}, in {art style}, with luminous effects, bold outline, high contrast, {color palette}, designed to stand out from regular icons, minimal background, glowing aura, magical particles, dynamic energy.`}
             minWords={25}
+            // Flux parameters
+            goFast={goFast}
+            guidance={guidance[0]}
+            megapixels={megapixels[0]}
+            numOutputs={Number.parseInt(numOutputs)}
+            aspectRatio={aspectRatio}
+            outputFormat={outputFormat}
+            outputQuality={outputQuality[0]}
+            promptStrength={promptStrength[0]}
+            numInferenceSteps={numInferenceSteps[0]}
           />
         ))}
 
@@ -262,11 +345,19 @@ export function AiImageGenerator() {
           globalPrompt={globalPrompt}
           globalStyle={globalStyle}
           globalVariantCount={Number.parseInt(globalVariantCount || "1")}
-          globalLoraModel={globalLoraModel}
-          globalCfgScale={globalCfgScale[0]}
           onRegisterGenerate={registerGenerateFunction}
           onSetFinal={handleSetFinal}
           cohesionHint={`Follow the visual language set by the Background and UI Frame for palette, lighting, and style.`}
+          // Flux parameters
+          goFast={goFast}
+          guidance={guidance[0]}
+          megapixels={megapixels[0]}
+          numOutputs={Number.parseInt(numOutputs)}
+          aspectRatio={aspectRatio}
+          outputFormat={outputFormat}
+          outputQuality={outputQuality[0]}
+          promptStrength={promptStrength[0]}
+          numInferenceSteps={numInferenceSteps[0]}
         />
       </main>
 

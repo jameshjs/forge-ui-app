@@ -27,6 +27,21 @@ Given a global theme prompt, return JSON with these keys:
   "symbol_icons": string[20],      // 20 different symbol icon ideas; each a distinct object/concept
   "wild_icons": string[5]          // 5 different wild symbol ideas; distinct and thematically coherent
 }
+
+IMPORTANT: You MUST follow these exact prompt templates for each type:
+
+Background Template:
+"A highly detailed {theme} game background for a game, featuring {specific environment details like forest temple, space station, desert ruins}, in a {art style}, with {mood/color palette}, no characters, wide composition, suitable as a backdrop for gameplay."
+
+UI Frame Template:
+"A decorative UI frame for a {theme} game, designed in {art style}, with clean edges, symmetrical layout, {material/texture like gold filigree, neon circuits, stone carvings}, leaving transparent space inside for text or buttons, polished and readable."
+
+Symbol Icon Template:
+"A simple, clear symbol icon representing {object/idea: e.g., sword, star, coin, potion}, in {art style}, bold silhouette, {color palette}, designed for small-scale visibility, transparent background, crisp edges, minimal design, designed to blend seamlessly with the game interface without standing out too much."
+
+Wild Icon Template:
+"A glowing, attention-grabbing wild icon symbolizing {wild feature: e.g., phoenix, crown, magic crystal}, in {art style}, with luminous effects, bold outline, high contrast, {color palette}, designed to stand out from regular icons, minimal background, glowing aura, magical particles, dynamic energy."
+
 Rules:
 - Use concise, production-ready image prompts, include art style modifiers if helpful.
 - Do NOT include JSON comments in the output.

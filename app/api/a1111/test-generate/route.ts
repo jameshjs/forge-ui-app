@@ -1,64 +1,79 @@
 import { NextResponse } from "next/server"
 
-function buildHeaders() {
-  const headers: Record<string, string> = { "Content-Type": "application/json" }
-  const basicAuth =
-    process.env.A1111_BASIC_AUTH ||
-    (process.env.A1111_USERNAME && process.env.A1111_PASSWORD
-      ? `${process.env.A1111_USERNAME}:${process.env.A1111_PASSWORD}`
-      : undefined)
-  const bearer = process.env.A1111_BEARER_TOKEN
-  if (basicAuth) {
-    const encoded = Buffer.from(basicAuth, "utf8").toString("base64")
-    headers["Authorization"] = `Basic ${encoded}`
-  } else if (bearer) {
-    headers["Authorization"] = `Bearer ${bearer}`
-  }
-  return headers
-}
-
 export async function GET() {
-  const baseUrl = normalizeBaseUrl(process.env.A1111_BASE_URL || "http://127.0.0.1:7860")
   try {
-    const headers = buildHeaders()
-    const payload = {
-      prompt: "test icon, flat minimal vector, simple",
-      width: 64,
-      height: 64,
-      cfg_scale: 7,
-      steps: 10,
-      n_iter: 1,
-      batch_size: 1,
-      sampler_name: "DPM++ 2M Karras",
+    const apiKey = process.env.GEMINI_API_KEY
+    if (!apiKey) {
+      return NextResponse.json(
+        { ok: false, error: "Missing GEMINI_API_KEY env var" },
+        { status: 500 }
+      )
     }
-    const url = `${baseUrl}/sdapi/v1/txt2img`
-    const res = await fetch(url, {
+
+    const payload = {
+      contents: [
+        {
+          parts: [
+            {
+              text: "Generate a high-quality test icon: simple flat minimal vector icon, clean design, 64x64 pixels, professional artwork"
+            }
+          ]
+        }
+      ],
+      generationConfig: {
+        temperature: 0.7,
+        maxOutputTokens: 8192,
+      },
+      safetySettings: [
+        {
+          category: "HARM_CATEGORY_HARASSMENT",
+          threshold: "BLOCK_MEDIUM_AND_ABOVE"
+        },
+        {
+          category: "HARM_CATEGORY_HATE_SPEECH", 
+          threshold: "BLOCK_MEDIUM_AND_ABOVE"
+        },
+        {
+          category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+          threshold: "BLOCK_MEDIUM_AND_ABOVE"
+        },
+        {
+          category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+          threshold: "BLOCK_MEDIUM_AND_ABOVE"
+        }
+      ]
+    }
+
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`, {
       method: "POST",
-      headers,
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     })
+
     if (!res.ok) {
       const text = await res.text()
       return NextResponse.json(
-        { ok: false, status: `${res.status} ${res.statusText}`, url, details: text },
+        { ok: false, status: `${res.status} ${res.statusText}`, details: text },
         { status: 502 },
       )
     }
-    const data = (await res.json()) as { images?: string[] }
-    const img = data.images?.[0]
-    if (!img) return NextResponse.json({ ok: false, error: "No image returned" }, { status: 502 })
-    return NextResponse.json({ ok: true, preview: `data:image/png;base64,${img}` })
+
+    const data = (await res.json()) as any
+    
+    if (data.candidates?.[0]?.content?.parts?.[0]?.inlineData) {
+      const base64Image = data.candidates[0].content.parts[0].inlineData.data
+      return NextResponse.json({ ok: true, preview: `data:image/png;base64,${base64Image}` })
+    } else {
+      const textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text
+      return NextResponse.json(
+        { ok: false, error: "Gemini returned text instead of image", details: textResponse },
+        { status: 502 }
+      )
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     return NextResponse.json({ ok: false, error: message }, { status: 502 })
   }
-}
-
-function normalizeBaseUrl(raw: string): string {
-  let url = raw.trim()
-  url = url.replace(/\/+$/g, "")
-  url = url.replace(/\/?sdapi.*/i, "")
-  return url
 }
 
 

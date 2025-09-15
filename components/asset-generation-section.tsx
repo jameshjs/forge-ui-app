@@ -16,13 +16,21 @@ interface AssetGenerationSectionProps {
   globalPrompt: string
   globalStyle: string
   globalVariantCount: number
-  globalLoraModel: string
-  globalCfgScale: number
   injectedPrompt?: string
   onRegisterGenerate: (generateFn: (overrideVariantCount?: number) => void) => void
   onSetFinal?: (args: { title: string; imageUrl: string; width: number; height: number }) => void
   cohesionHint?: string
   minWords?: number
+  // Flux-specific parameters
+  goFast: boolean
+  guidance: number
+  megapixels: number
+  numOutputs: number
+  aspectRatio: string
+  outputFormat: string
+  outputQuality: number
+  promptStrength: number
+  numInferenceSteps: number
 }
 
 export function AssetGenerationSection({
@@ -32,13 +40,21 @@ export function AssetGenerationSection({
   globalPrompt,
   globalStyle,
   globalVariantCount,
-  globalLoraModel,
-  globalCfgScale,
   injectedPrompt,
   onRegisterGenerate,
   onSetFinal,
   cohesionHint,
   minWords,
+  // Flux-specific parameters
+  goFast,
+  guidance,
+  megapixels,
+  numOutputs,
+  aspectRatio,
+  outputFormat,
+  outputQuality,
+  promptStrength,
+  numInferenceSteps,
 }: AssetGenerationSectionProps) {
   const [sectionPrompt, setSectionPrompt] = useState("")
   const [isPromptOverridden, setIsPromptOverridden] = useState(false)
@@ -122,7 +138,6 @@ export function AssetGenerationSection({
           const promptParts = [
             effectivePrompt,
             globalStyle,
-            globalLoraModel && globalLoraModel !== "none" ? `<lora:${globalLoraModel}:1>` : "",
             cohesionHint || "",
           ].filter(Boolean)
           let finalPrompt = promptParts.join(", ")
@@ -136,9 +151,18 @@ export function AssetGenerationSection({
               prompt: finalPrompt,
               width,
               height,
-              cfgScale: globalCfgScale,
               count: countToGenerate,
               negativePrompt: "",
+              // Flux-specific parameters
+              goFast,
+              guidance,
+              megapixels,
+              numOutputs,
+              aspectRatio,
+              outputFormat,
+              outputQuality,
+              promptStrength,
+              numInferenceSteps,
             }),
           })
           if (!res.ok) {
@@ -158,7 +182,7 @@ export function AssetGenerationSection({
         }
       })()
     },
-    [sectionPrompt, globalPrompt, width, height, globalStyle, globalVariantCount, globalLoraModel, globalCfgScale, title],
+    [sectionPrompt, globalPrompt, width, height, globalStyle, globalVariantCount, title, goFast, guidance, megapixels, numOutputs, aspectRatio, outputFormat, outputQuality, promptStrength, numInferenceSteps],
   )
 
   useEffect(() => {
@@ -173,7 +197,6 @@ export function AssetGenerationSection({
         const promptParts = [
           effectivePrompt,
           globalStyle,
-          globalLoraModel && globalLoraModel !== "none" ? `<lora:${globalLoraModel}:1>` : "",
           cohesionHint || "",
         ].filter(Boolean)
         let finalPrompt = promptParts.join(", ")
@@ -187,9 +210,18 @@ export function AssetGenerationSection({
             prompt: finalPrompt,
             width,
             height,
-            cfgScale: globalCfgScale,
             count: 1,
             negativePrompt: "",
+            // Flux-specific parameters
+            goFast,
+            guidance,
+            megapixels,
+            numOutputs,
+            aspectRatio,
+            outputFormat,
+            outputQuality,
+            promptStrength,
+            numInferenceSteps,
           }),
         })
         if (!res.ok) {
@@ -248,7 +280,7 @@ export function AssetGenerationSection({
       <CardContent className="grid gap-4">
         <div className="grid gap-2">
           <div className="flex items-center justify-between">
-            <Label htmlFor={`${title.toLowerCase()}-prompt`}>Prompt (inherits from global if empty)</Label>
+            <Label htmlFor={`${title.toLowerCase()}-prompt`}>Prompt</Label>
             <Button
               type="button"
               variant="secondary"
